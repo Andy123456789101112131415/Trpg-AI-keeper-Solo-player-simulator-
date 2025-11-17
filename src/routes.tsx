@@ -1,4 +1,7 @@
-import SamplePage from './pages/SamplePage';
+import Home from './pages/Home';
+import CharacterCreate from './pages/CharacterCreate';
+import ScenarioSelect from './pages/ScenarioSelect';
+import Game from './pages/Game';
 import type { ReactNode } from 'react';
 
 interface RouteConfig {
@@ -10,9 +13,24 @@ interface RouteConfig {
 
 const routes: RouteConfig[] = [
   {
-    name: 'Sample Page',
+    name: 'Home',
     path: '/',
-    element: <SamplePage />
+    element: <Home />
+  },
+  {
+    name: 'Character Create',
+    path: '/character/create',
+    element: <CharacterCreate />
+  },
+  {
+    name: 'Scenario Select',
+    path: '/scenario/select',
+    element: <ScenarioSelect />
+  },
+  {
+    name: 'Game',
+    path: '/game/:scenarioId',
+    element: <Game />
   }
 ];
 
