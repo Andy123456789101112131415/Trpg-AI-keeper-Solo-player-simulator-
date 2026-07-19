@@ -1,0 +1,92 @@
+/* stylelint-disable */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here.
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --radius: 0.5rem;
+    /* 克苏鲁主题 - 深墨绿色系 */
+    --background: 150 20% 12%;
+    --foreground: 45 40% 85%;
+    --card: 150 18% 15%;
+    --card-foreground: 45 40% 85%;
+    --popover: 150 18% 15%;
+    --popover-foreground: 45 40% 85%;
+    --primary: 150 35% 25%;
+    --primary-foreground: 45 60% 90%;
+    --secondary: 30 25% 35%;
+    --secondary-foreground: 45 60% 90%;
+    --muted: 150 15% 20%;
+    --muted-foreground: 45 20% 65%;
+    --accent: 45 55% 50%;
+    --accent-foreground: 150 20% 12%;
+    --destructive: 0 70% 45%;
+    --destructive-foreground: 45 60% 90%;
+    --border: 150 20% 25%;
+    --input: 150 20% 20%;
+    --ring: 45 55% 50%;
+    /* 羊皮纸质感 */
+    --parchment: 45 40% 85%;
+    --parchment-dark: 45 30% 75%;
+    /* 古籍装饰色 */
+    --ornament: 45 55% 50%;
+    --ornament-dark: 30 45% 40%;
+  }
+
+  .dark {
+    --background: 150 25% 8%;
+    --foreground: 45 40% 85%;
+    --card: 150 22% 10%;
+    --card-foreground: 45 40% 85%;
+    --popover: 150 22% 10%;
+    --popover-foreground: 45 40% 85%;
+    --primary: 150 40% 20%;
+    --primary-foreground: 45 60% 90%;
+    --secondary: 30 30% 30%;
+    --secondary-foreground: 45 60% 90%;
+    --muted: 150 18% 15%;
+    --muted-foreground: 45 20% 60%;
+    --accent: 45 60% 45%;
+    --accent-foreground: 150 25% 8%;
+    --destructive: 0 75% 40%;
+    --destructive-foreground: 45 60% 90%;
+    --border: 150 20% 20%;
+    --input: 150 20% 15%;
+    --ring: 45 60% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  .parchment-bg {
+    background-color: hsl(var(--parchment));
+    background-image: 
+      repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        hsl(var(--parchment-dark) / 0.1) 2px,
+        hsl(var(--parchment-dark) / 0.1) 4px
+      );
+  }
+  
+  .ornament-border {
+    border-color: hsl(var(--ornament));
+    border-width: 2px;
+    border-style: solid;
+  }
+}
