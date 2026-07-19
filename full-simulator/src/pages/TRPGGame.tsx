@@ -219,34 +219,16 @@ export default function TRPGGame() {
       setParsedModules([...parsedModules]);
     }
 
-    // ⚡ 开场交给 AI 润色——只给基础文件，不给门控内容
-    setLoading(true);
-    try {
-      const kpContext = importedMod ? getBaseContext(importedMod) : scenario;
+    // ⚡ 开场：直接展示原文，不让 AI 润色（避免编造）
+    const kpContext = importedMod ? getBaseContext(importedMod) : scenario;
+    const sceneText = importedMod
+      ? kpContext  // 直接展示解析后的"始终可见"原文
+      : (scenario.split('### 初始场景')[1]?.trim() || scenario.slice(0, 500));
 
-      const openingPrompt = `你是COC 7th跑团的守秘人(KP)。游戏开始。
-
-## 你目前知道的信息
-${kpContext}
-
-## 规则
-- 你可以使用"开幕"中的内容——那是NPC主动告诉调查员的初始简报
-- 你**不能**主动透露标记为"条件触发"的信息——那些需要调查员追问才解锁
-- 不知道的事不要编造
-- 开场描述当前场景、环境和气氛，呈现NPC给出的简报内容
-- 200-400字。不要使用[CHECK]或[SAN_CHECK]。`;
-
-      const resp = await fetch('https://api.deepseek.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKeyInput.trim()}` },
-        body: JSON.stringify({ model: 'deepseek-chat', messages: [{ role: 'user', content: openingPrompt }], temperature: 0.7, max_tokens: 1500 }),
-      });
-      const data = await resp.json();
-      const opening = data.choices?.[0]?.message?.content || '🕯 *故事就这样开始了……*\n\n' + (scenario.split('### 初始场景')[1]?.trim() || '');
-      addMsg('kp', opening);
-    } catch {
-      const sceneText = scenario.split('### 初始场景')[1]?.trim() || scenario.slice(0, 500);
-      addMsg('kp', '🕯 *故事就这样开始了……*\n\n' + sceneText);
+    addMsg('kp', sceneText);
+    // 提示玩家 AI 已就绪
+    if (importedMod) {
+      addMsg('system', '📋 AI守秘人已就绪。请根据上面提供的信息，输入你的行动或询问。');
     }
     setLoading(false);
   }, [apiKeyInput, scenario, selectedChar, addMsg]);
