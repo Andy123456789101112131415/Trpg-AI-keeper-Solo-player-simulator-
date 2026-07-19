@@ -191,7 +191,9 @@ export default function TRPGGame() {
     setMaxSAN(selectedChar.derived.maxSAN);
 
     // 注入角色信息到开场
-    const charIntro = `\n\n[系统] 当前角色：${selectedChar.name}（${selectedChar.occupation}）\nHP ${selectedChar.derived.HP}/${selectedChar.derived.maxHP} | SAN ${selectedChar.derived.SAN}/${selectedChar.derived.maxSAN} | MP ${selectedChar.derived.MP}/${selectedChar.derived.maxMP} | MOV ${selectedChar.derived.MOV}`;
+    const weapons = selectedChar.weapons?.map(w => w.name).join('、') || '徒手';
+    const cr = (selectedChar as any).creditRating ?? '—';
+    const charIntro = `\n\n[系统] 当前角色：${selectedChar.name}（${selectedChar.occupation}）\nHP ${selectedChar.derived.HP}/${selectedChar.derived.maxHP} | SAN ${selectedChar.derived.SAN}/${selectedChar.derived.maxSAN} | MP ${selectedChar.derived.MP}/${selectedChar.derived.maxMP} | MOV ${selectedChar.derived.MOV} | DB ${selectedChar.derived.DB}\n武器：${weapons}`;
     addMsg('system', `🕯 载入角色：${selectedChar.name} · ${selectedChar.occupation}` + charIntro);
 
     const sceneText = scenario.split('### 初始场景')[1]?.trim() || scenario.slice(0, 500);
@@ -474,7 +476,7 @@ export default function TRPGGame() {
                   onClick={() => document.getElementById('import-char-file')?.click()}>
                   📥 导入
                 </Button>
-                <input id="import-char-file" type="file" accept=".json,.xlsx,.xls" className="hidden"
+                <input id="import-char-file" type="file" accept=".json" className="hidden"
                   onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;

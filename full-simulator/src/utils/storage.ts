@@ -163,19 +163,26 @@ function parseCharacterFromRows(rows: string[][]): Character | null {
   if (!name) return null;
 
   const skills: Skill[] = DEFAULT_SKILLS.map(skill => ({
-    ...skill,
+    name: skill.name,
+    baseValue: skill.baseValue,
     currentValue: skillValues[skill.name] ?? skill.baseValue,
+    occupationPoints: 0,
+    interestPoints: 0,
+    category: skill.category as Skill['category'],
   }));
 
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name,
     age: Math.max(18, Number.parseInt(ageText, 10) || 18),
+    sex: '男',
     occupation: occupation || '未知职业',
+    creditRating: 20,
     background,
     attributes,
     derived: calculateDerivedAttributes(attributes),
     skills,
+    weapons: [],
     items: [],
     createdAt: Date.now(),
   };
@@ -211,10 +218,11 @@ export function importCharactersFromFile(file: File): Promise<Character[]> {
   if (fileName.endsWith('.json')) {
     return importCharactersFromJsonFile(file);
   }
+  // XLSX 导入功能已封存，请先导出为 JSON 再导入
   if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
-    return importCharactersFromXlsxFile(file);
+    return Promise.reject(new Error('XLSX 导入功能已封存。请先将角色卡导出为 JSON 格式再导入。'));
   }
-  return Promise.reject(new Error('不支持的文件类型，请选择 .json 或 .xlsx 文件'));
+  return Promise.reject(new Error('不支持的文件类型，请选择 .json 文件'));
 }
 
 async function loadXlsxModule(): Promise<any> {
