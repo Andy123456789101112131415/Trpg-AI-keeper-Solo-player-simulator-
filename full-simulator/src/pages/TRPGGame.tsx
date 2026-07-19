@@ -224,18 +224,21 @@ export default function TRPGGame() {
     try {
       const kpContext = importedMod ? getBaseContext(importedMod) : scenario;
 
-      const openingPrompt = `你是COC 7th跑团的守秘人(KP)。游戏现在开始。
+      const openingPrompt = `你是COC 7th跑团的守秘人(KP)。游戏开始。
 
-## ⚠ 重要：你目前只知道以下内容
+## ⚠ 严格限制：你目前只知道以下信息
 ${kpContext}
 
-## 关于你不知道的信息
-你**不知道**线索细节、NPC秘密、怪物数据、后续场景节点。这些信息会在调查员触发时由系统逐步注入给你。如果调查员询问你不知道的事情，用自然的方式回应（如"你目前没有这方面的信息"），**不要编造**。
+## ⛔ 铁律
+- 你**只能使用上面提供的信息**。不存在的信息你不能编造。
+- 你**绝对不能**主动透露案件细节、线索、证人证词——这些信息你还不知道，系统会在调查员触发后逐步给你。
+- 开场只描述：环境、气氛、你面前的场景。如果模组开头是"警局盘问"，你只描述警局里的环境和你面前的警探——不要说"发生了什么事"。
+- 如果调查员问你不知道的事，回答"你目前没有这方面的信息"或类似自然的回应。
 
 ## 玩家角色
 ${charIntro}
 
-请用生动的文学语言描述开场场景。200-400字。不要使用[CHECK]或[SAN_CHECK]标记。`;
+请用生动的文学语言描述**当前场景的环境和氛围**。100-200字即可。不要复述案情。不要使用[CHECK]或[SAN_CHECK]。`;
 
       const resp = await fetch('https://api.deepseek.com/v1/chat/completions', {
         method: 'POST',

@@ -94,30 +94,30 @@ export async function processModuleFile(file: File, apiKey: string): Promise<Par
   const gatedItems: Omit<GatedContent, 'unlocked'>[] = [];
 
   for (const chunk of chunks) {
-    const parsePrompt = `你是COC模组解析器。请分析以下模组文本，将内容分为两类：
+    const parsePrompt = `你是COC模组解析器。将文本严格分为两类：
 
-**第一类：始终可见（Always）**
-- 开幕场景的纯叙事描写
-- 地点外观描述（不包括隐藏细节）
-- NPC的基本外貌、公开身份
-- 背景时代设定
+**始终可见（Always）——只有以下内容可以放这里：**
+- 当前场景的纯环境描写（天气、光线、气味、声音）
+- 地点外观（肉眼可见的建筑外观、房间布局，不包括隐藏的细节）
+- NPC的公开身份和外表（如"斯特拉克曼警探，中年，疲倦"）
+- 时代背景一句话
 
-**第二类：条件触发（Gated）**
-- 任何需要调查员主动询问、搜索、检定才能获得的信息
-- Q&A格式的内容（如"通报警电话"→回答）
-- 线索、隐藏细节、怪物数据
-- NPC的内心动机、秘密
+**条件触发（Gated）——以下所有内容必须锁住：**
+- 案件的具体细节（发生了什么、谁报警的、发现了什么）
+- 任何血迹、痕迹、爪印、蹄印等具体线索描述
+- NPC的对话内容、证词、内心活动
+- Q&A式的内容块
+- 任何需要调查员询问/搜索/检定才能知道的信息
+- 犯罪现场的具体状况
+- 怪物数据
 
-对于每条条件触发内容，请提供：
-- triggerDesc: 触发条件（中文，如"调查员询问报警电话细节"）
-- keywords: 3-5个匹配关键词
+**绝对禁止把案件细节、线索描述、NPC证词放进Always！**
 
-以JSON数组返回，每条格式：
+每条JSON格式：
 {"type":"always","category":"开幕|背景|NPC|地点","content":"..."}
-或
-{"type":"gated","triggerDesc":"...","keywords":["...","..."],"category":"线索|NPC|场景|敌对","content":"..."}
+{"type":"gated","triggerDesc":"触发条件（如调查员询问报警电话）","keywords":["词1","词2"],"category":"线索|NPC|场景|敌对","content":"..."}
 
-模组文本：
+文本：
 ${chunk.slice(0, 7000)}`;
 
     try {
