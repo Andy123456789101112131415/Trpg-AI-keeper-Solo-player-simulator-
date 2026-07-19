@@ -396,7 +396,9 @@ export default function TRPGGame() {
     if (!playerIntro) {
       const imported = parsedModules.find(m => m.id === selectedScenarioId);
       if (imported) {
-        playerIntro = imported.summary || (imported.rawText || '').slice(0, 600);
+        // 取分类中第一个非"其他"的内容，或 rawText 前1000字
+        const mainCat = imported.categories?.find(c => c.name !== '其他' && c.name !== 'raw');
+        playerIntro = mainCat?.content?.slice(0, 1000) || (imported.rawText || '').slice(0, 1000);
       } else {
         playerIntro = scenario.split('### 初始场景')[1]?.trim() || '';
       }

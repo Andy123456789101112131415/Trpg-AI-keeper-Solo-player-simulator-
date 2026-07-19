@@ -1,10 +1,10 @@
-// 模组处理：将用户上传的 Word 文档发送给 AI，解析为结构化的模组目录并返回
+// 模组处理：本地提取文本，AI 仅负责分类和生成标题/摘要，原始内容完整保留
 const DEEPSEEK_URL = 'https://api.deepseek.com/v1/chat/completions';
 const MODEL = 'deepseek-chat';
 
 export interface ModuleCategory {
   name: string;
-  content: string; // 分段后的具体文本
+  content: string;
 }
 
 export interface ParsedModule {
@@ -21,47 +21,73 @@ export interface ParsedModule {
 
 const STORAGE_KEY = 'coc_parsed_modules';
 
-export async function processModuleFile(file: File, apiKey: string): Promise<ParsedModule> {
-  // 处理策略：先在浏览器端提取文本并按块摘要，避免一次发送过大的上下文导致模型报错
+// ── 本地文本提取 ──
+async function extractTextFromFile(file: File): Promise<string> {
   const ext = file.name.split('.').pop()?.toLowerCase() || '';
+  if (ext === 'txt') return await file.text();
 
-  // 本地提取文本（docx 使用 mammoth via CDN；txt 直接读取；其他二进制格式返回提示）
-  async function extractTextFromFile(f: File): Promise<string> {
-    if (ext === 'txt') {
-      return await f.text();
+  if (ext === 'docx') {
+    if (!(window as any).mammoth) {
+      await new Promise<void>((resolve) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/mammoth@1.4.19/mammoth.browser.min.js';
+        script.onload = () => resolve();
+        script.onerror = () => resolve();
+        document.head.appendChild(script);
+      });
     }
-    if (ext === 'docx') {
-      // 动态注入 mammoth 脚本（浏览器端 UMD），然后使用 window.mammoth
-      if (!(window as any).mammoth) {
-        await new Promise<void>((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = 'https://cdn.jsdelivr.net/npm/mammoth@1.4.19/mammoth.browser.min.js';
-          script.onload = () => resolve();
-          script.onerror = (e) => reject(new Error('加载 mammoth 失败'));
-          document.head.appendChild(script);
-        }).catch(() => {});
-      }
-      const mammoth = (window as any).mammoth;
-      if (mammoth && typeof mammoth.extractRawText === 'function') {
-        try {
-          const arrayBuffer = await f.arrayBuffer();
-          const res = await mammoth.extractRawText({ arrayBuffer });
-          return res.value || '';
-        } catch (err) {
-          return '';
-        }
-      }
-      // 如果 mammoth 不可用，返回空并由上层处理
-      return '';
+    const mammoth = (window as any).mammoth;
+    if (mammoth?.extractRawText) {
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const res = await mammoth.extractRawText({ arrayBuffer });
+        return res.value || '';
+      } catch { return ''; }
     }
-    // 未支持格式
-    return '';
   }
+  return '';
+}
 
+// ── 按自然段落分块 ──
+function splitIntoBlocks(text: string, maxBlockChars = 6000): string[] {
+  const rawBlocks = text.split(/\n\n+/).filter(b => b.trim().length > 0);
+  const blocks: string[] = [];
+  let current = '';
+
+  for (const block of rawBlocks) {
+    const trimmed = block.trim();
+    if (!trimmed) continue;
+    if ((current.length > 0) && (current.length + trimmed.length > maxBlockChars)) {
+      blocks.push(current);
+      current = trimmed;
+    } else {
+      current = current ? current + '\n\n' + trimmed : trimmed;
+    }
+  }
+  if (current) blocks.push(current);
+  return blocks;
+}
+
+// ── AI 调用 ──
+async function callAI(apiKey: string, prompt: string, maxTokens = 1000): Promise<string> {
+  const resp = await fetch(DEEPSEEK_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ model: MODEL, messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: maxTokens }),
+  });
+  if (!resp.ok) {
+    const txt = await resp.text();
+    throw new Error(`API错误 ${resp.status}: ${txt}`);
+  }
+  const d = await resp.json();
+  return d.choices?.[0]?.message?.content ?? '';
+}
+
+// ── 主处理 ──
+export async function processModuleFile(file: File, apiKey: string): Promise<ParsedModule> {
   const extracted = await extractTextFromFile(file);
 
   if (!extracted) {
-    // 无法提取文本或没有 API key：保存原始文件名并提示用户
     return {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       title: file.name,
@@ -72,7 +98,6 @@ export async function processModuleFile(file: File, apiKey: string): Promise<Par
     } as ParsedModule;
   }
 
-  // 如果没有 apiKey，只返回本地提取的 rawText 并让用户决定是否调用 AI
   if (!apiKey) {
     return {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -84,86 +109,95 @@ export async function processModuleFile(file: File, apiKey: string): Promise<Par
     } as ParsedModule;
   }
 
-  // 将文本分块摘要以减少上下文大小
-  function splitText(text: string, maxChars = 20000): string[] {
-    const chunks: string[] = [];
-    let pos = 0;
-    while (pos < text.length) {
-      chunks.push(text.slice(pos, pos + maxChars));
-      pos += maxChars;
-    }
-    return chunks;
-  }
+  // 第一步：AI 提取标题和摘要
+  const headText = extracted.slice(0, 4000);
+  const metaPrompt = `你是一个COC跑团模组解析器。根据以下模组文本开头，提取：
+1. 模组标题
+2. 一句话摘要（50字以内）
 
-  async function summarizeChunk(chunk: string): Promise<string> {
-    const p = `请将以下文档片段用中文总结为一段不超过200字的要点，保留关键名词（如NPC、地点、线索、事件）。\n\n片段：\n${chunk}`;
-    const resp = await fetch(DEEPSEEK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: MODEL, messages: [{ role: 'user', content: p }], temperature: 0.2, max_tokens: 600 }),
-    });
-    if (!resp.ok) return '';
-    const d = await resp.json();
-    return d.choices?.[0]?.message?.content ?? '';
-  }
+只返回JSON：{"title":"...","summary":"..."}
 
-  const chunks = splitText(extracted, 20000);
-  const summaries: string[] = [];
-  for (const c of chunks) {
-    const s = await summarizeChunk(c);
-    summaries.push(s || c.slice(0, 500));
-  }
+模组文本：
+${headText}`;
 
-  // 合并摘要并让 AI 输出最终结构化 JSON（小得多的上下文）
-  const combined = summaries.join('\n\n');
-  const finalPrompt = `TASK: 你是模组解析助手。根据下面合并的片段摘要，生成所需的结构化 JSON：{\n  "title":"...",\n  "summary":"...",\n  "categories":[{"name":"...","content":"..."}],\n  "npcs":[{"name":"..","description":".."}],\n  "locations":[{"name":"..","description":".."}],\n  "rules":["..."],\n  "rawText":"..."\n}\n不要额外输出解释。\n合并摘要：\n${combined}`;
-
-  const finalResp = await fetch(DEEPSEEK_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model: MODEL, messages: [{ role: 'user', content: finalPrompt }], temperature: 0.2, max_tokens: 2000 }),
-  });
-
-  if (!finalResp.ok) {
-    const txt = await finalResp.text();
-    throw new Error(`解析失败：${finalResp.status} ${txt}`);
-  }
-
-  const finalData = await finalResp.json();
-  const content = finalData.choices?.[0]?.message?.content ?? '';
-  const jsonStart = content.indexOf('{');
-  const jsonText = jsonStart >= 0 ? content.slice(jsonStart) : content;
-  let parsed: any;
+  let title = file.name;
+  let summary = '';
   try {
-    parsed = JSON.parse(jsonText);
-  } catch (err) {
-    // 返回提取的文本作为回退
-    return {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      title: file.name,
-      summary: combined.slice(0, 300),
-      categories: [{ name: '摘要合并', content: combined }],
-      rawText: extracted,
-      createdAt: Date.now(),
-    } as ParsedModule;
+    const metaRaw = await callAI(apiKey, metaPrompt, 300);
+    const jsonStart = metaRaw.indexOf('{');
+    const meta = JSON.parse(jsonStart >= 0 ? metaRaw.slice(jsonStart) : metaRaw);
+    title = meta.title || file.name;
+    summary = meta.summary || '';
+  } catch { /* 回退 */ }
+
+  // 第二步：分块，AI 只打分类标签（不压缩内容）
+  const blocks = splitIntoBlocks(extracted, 6000);
+  const classified: { name: string; content: string }[] = [];
+
+  for (const block of blocks) {
+    if (block.length < 50) {
+      classified.push({ name: '其他', content: block });
+      continue;
+    }
+
+    const classPrompt = `你是COC模组分类器。判断下面文本属于哪个分类，只返回分类名：
+可选：背景、场景节点、线索、NPC、地点、敌对存在、规则、奖励、初始场景、其他
+
+文本：
+${block.slice(0, 3000)}
+
+分类：`;
+
+    try {
+      const category = (await callAI(apiKey, classPrompt, 50)).trim();
+      const cleanCat = ['背景','场景节点','线索','NPC','地点','敌对存在','规则','奖励','初始场景','其他']
+        .find(c => category.includes(c)) || '其他';
+      classified.push({ name: cleanCat, content: block });
+    } catch {
+      classified.push({ name: '其他', content: block });
+    }
   }
 
-  const module: ParsedModule = {
+  // 第三步：合并同分类
+  const categoryMap = new Map<string, string>();
+  for (const item of classified) {
+    const existing = categoryMap.get(item.name) || '';
+    categoryMap.set(item.name, existing ? existing + '\n\n' + item.content : item.content);
+  }
+  const categories: ModuleCategory[] = Array.from(categoryMap.entries()).map(([name, content]) => ({
+    name, content: content.trim(),
+  }));
+
+  // 第四步：提取 NPC 和地点
+  let npcs: { name: string; description: string }[] = [];
+  let locations: { name: string; description: string }[] = [];
+  try {
+    const npcPrompt = `从以下模组文本提取NPC和地点。只返回JSON：
+{"npcs":[{"name":"..","description":".."}],"locations":[{"name":"..","description":".."}]}
+
+模组文本：
+${extracted.slice(0, 8000)}`;
+    const npcRaw = await callAI(apiKey, npcPrompt, 800);
+    const jsonStart = npcRaw.indexOf('{');
+    const parsed = JSON.parse(jsonStart >= 0 ? npcRaw.slice(jsonStart) : npcRaw);
+    npcs = parsed.npcs || [];
+    locations = parsed.locations || [];
+  } catch { /* 可选 */ }
+
+  return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    title: parsed.title ?? file.name,
-    summary: parsed.summary ?? (parsed.categories?.[0]?.content?.slice(0, 200) ?? ''),
-    categories: parsed.categories ?? [{ name: '全文', content: parsed.rawText ?? '' }],
-    npcs: parsed.npcs ?? [],
-    locations: parsed.locations ?? [],
-    rules: parsed.rules ?? [],
-    rawText: parsed.rawText ?? extracted,
+    title,
+    summary,
+    categories,
+    npcs,
+    locations,
+    rules: [],
+    rawText: extracted,
     createdAt: Date.now(),
   };
-
-  return module;
 }
 
-// 本地存储相关
+// ── 存储 ──
 export function saveParsedModule(module: ParsedModule): void {
   const list = getParsedModules();
   list.push(module);
@@ -171,12 +205,8 @@ export function saveParsedModule(module: ParsedModule): void {
 }
 
 export function getParsedModules(): ParsedModule[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY) || '[]';
-    return JSON.parse(raw) as ParsedModule[];
-  } catch {
-    return [];
-  }
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') as ParsedModule[]; }
+  catch { return []; }
 }
 
 export function getParsedModuleById(id: string): ParsedModule | null {
@@ -188,27 +218,25 @@ export function deleteParsedModule(id: string): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
 }
 
-// 将解析后的模组格式化为供 AI 系统提示使用的字符串（结构化但为纯文本）
+// ── 格式化为 AI Prompt ──
 export function flattenModuleForPrompt(module: ParsedModule): string {
   const parts: string[] = [];
   parts.push(`模组标题：${module.title}`);
   if (module.summary) parts.push(`摘要：${module.summary}`);
-  if (module.categories && module.categories.length) {
+  if (module.categories?.length) {
     for (const cat of module.categories) {
       parts.push(`== ${cat.name} ==\n${cat.content}`);
     }
+  } else if (module.rawText) {
+    parts.push(module.rawText);
   }
-  if (module.npcs && module.npcs.length) {
-    parts.push('NPC 列表：');
+  if (module.npcs?.length) {
+    parts.push('NPC：');
     for (const n of module.npcs) parts.push(`${n.name}：${n.description}`);
   }
-  if (module.locations && module.locations.length) {
+  if (module.locations?.length) {
     parts.push('地点：');
     for (const l of module.locations) parts.push(`${l.name}：${l.description}`);
-  }
-  if (module.rules && module.rules.length) {
-    parts.push('特殊规则：');
-    for (const r of module.rules) parts.push(r);
   }
   return parts.join('\n\n');
 }
