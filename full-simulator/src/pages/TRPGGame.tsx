@@ -17,7 +17,7 @@ import { DEFAULT_SCENARIO, SCENARIOS } from '@/data/knowledge';
 import DicePanel from '@/components/game/DicePanel';
 import { getCharactersList, getCurrentCharacter, saveCharacter, exportCharactersToFile, importCharactersFromFile } from '@/utils/storage';
 import type { Character } from '@/types/game';
-import { getParsedModules, deleteParsedModule } from '@/services/moduleProcessor';
+import { getParsedModules, deleteParsedModule, getBaseContext, detectSceneInjection, getModuleFile } from '@/services/moduleProcessor';
 
 // ── 消息格式解析 ──
 interface ParsedMessage {
@@ -173,6 +173,16 @@ export default function TRPGGame() {
     setMessages(p => [...p, { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), role, content, timestamp: Date.now() }]);
   }, []);
 
+  // ⚡ 计算实际发送给 AI 的模组内容（导入模组按需注入，预设模组完整发送）
+  const getEffectiveScenario = useCallback((playerInput?: string) => {
+    const imported = parsedModules.find(m => m.id === selectedScenarioId);
+    if (!imported) return scenario; // 预设模组：完整发送
+    const base = getBaseContext(imported);
+    if (!playerInput) return base;  // 开场：只给基础
+    const injected = detectSceneInjection(imported, playerInput);
+    return injected ? base + injected : base;
+  }, [parsedModules, selectedScenarioId, scenario]);
+
   const startGame = useCallback(async () => {
     if (!apiKeyInput.trim()) return;
     if (!selectedChar) {
@@ -195,25 +205,24 @@ export default function TRPGGame() {
     const charIntro = `当前角色：${selectedChar.name}（${selectedChar.occupation}）\nHP ${selectedChar.derived.HP}/${selectedChar.derived.maxHP} | SAN ${selectedChar.derived.SAN}/${selectedChar.derived.maxSAN} | MP ${selectedChar.derived.MP}/${selectedChar.derived.maxMP} | MOV ${selectedChar.derived.MOV} | DB ${selectedChar.derived.DB}\n武器：${weapons}\n技能：${selectedChar.skills.filter(s => s.currentValue >= 20).map(s => `${s.name}(${s.currentValue})`).join(', ')}`;
     addMsg('system', `🕯 载入角色：${selectedChar.name} · ${selectedChar.occupation}`);
 
-    // ⚡ 开场交给 AI 润色——把模组内容和角色信息发给它
+    // ⚡ 开场交给 AI 润色——只给基础文件（开幕+NPC+地点+背景），不给线索/场景/敌对
     setLoading(true);
     try {
-      const openingPrompt = `你是COC 7th跑团的守秘人(KP)。游戏现在开始。
+      // 导入模组：只用基础上下文；预设模组：用完整 scenario
+      const importedMod = parsedModules.find(m => m.id === selectedScenarioId);
+      const kpContext = importedMod ? getBaseContext(importedMod) : scenario;
+
+      const openingPrompt = `你是COC 7th跑团的守秘人(KP)。游戏现在开始。你只能使用下面提供的信息。
+
+## ⚠ 重要：你只知道以下内容
+${kpContext}
 
 ## 玩家角色
 ${charIntro}
 
-## 模组内容（严格遵循）
-${scenario}
+请用生动的文学语言，以守秘人的身份描述开场场景。你只能描述"开幕"文件中提供的内容——不要编造你不知道的信息。给出清晰的开场，引导玩家做出第一个行动选择。
 
-请用生动的文学语言，以守秘人的身份描述开场的第一个场景。描述环境、氛围、NPC（如果有）、以及调查员所处的状态。给出一个清晰的开场，结尾引导玩家做出第一个行动选择。
-
-回复格式：
-#用一段动作描述开场场景
-'对话内容（如有NPC）'
-(气氛描写)
-
-不要使用[CHECK]或[SAN_CHECK]标记——开场只需叙事。200-400字。`;
+200-400字。不要使用[CHECK]或[SAN_CHECK]标记。`;
 
       const resp = await fetch('https://api.deepseek.com/v1/chat/completions', {
         method: 'POST',
@@ -275,7 +284,7 @@ ${scenario}
         setMemoryLoading(false);
       }
 
-      const response = await callKeeper(history, scenario, memories);
+      const response = await callKeeper(history, getEffectiveScenario(sanitizedText), memories);
       addMsg('kp', response);
 
       // 检测检定请求
@@ -363,7 +372,7 @@ ${scenario}
           });
         }
 
-        const response = await callKeeper(history, scenario, memories);
+        const response = await callKeeper(history, getEffectiveScenario(), memories);
         addMsg('kp', response);
 
         // 检查响应中的新检定请求
@@ -426,9 +435,9 @@ ${scenario}
     if (!playerIntro) {
       const imported = parsedModules.find(m => m.id === selectedScenarioId);
       if (imported) {
-        // 取分类中第一个非"其他"的内容，或 rawText 前1000字
-        const mainCat = imported.categories?.find(c => c.name !== '其他' && c.name !== 'raw');
-        playerIntro = mainCat?.content?.slice(0, 1000) || (imported.rawText || '').slice(0, 1000);
+        // 优先用"开幕"文件，其次是"背景"
+        const opening = getModuleFile(imported, '开幕') || getModuleFile(imported, '背景');
+        playerIntro = opening?.slice(0, 1500) || imported.summary || (imported.rawText || '').slice(0, 1000);
       } else {
         playerIntro = scenario.split('### 初始场景')[1]?.trim() || '';
       }

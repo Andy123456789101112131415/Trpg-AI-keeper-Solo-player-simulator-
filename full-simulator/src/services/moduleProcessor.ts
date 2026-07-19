@@ -1,31 +1,31 @@
-// 模组处理：本地提取文本，AI 仅负责分类和生成标题/摘要，原始内容完整保留
+// 模组处理：本地提取 → AI 分类归档为"文件夹"结构，原文完整保留
 const DEEPSEEK_URL = 'https://api.deepseek.com/v1/chat/completions';
 const MODEL = 'deepseek-chat';
 
-export interface ModuleCategory {
-  name: string;
-  content: string;
+// ── 模组文件夹中的文件定义 ──
+export interface ModuleFile {
+  name: string;    // 文件名："开幕" "背景" "NPC" "地点" "场景节点" "线索" "敌对存在" "规则" "奖励" "其他"
+  content: string; // 完整原文，不修改
 }
 
 export interface ParsedModule {
   id: string;
   title: string;
-  summary: string;
-  categories: ModuleCategory[];
-  npcs?: { name: string; description: string }[];
-  locations?: { name: string; description: string }[];
-  rules?: string[];
-  rawText?: string;
+  summary: string;         // 一句话摘要
+  files: ModuleFile[];     // 分类后的文件列表
+  rawText: string;         // 完整原文（备用）
   createdAt: number;
 }
 
 const STORAGE_KEY = 'coc_parsed_modules';
 
+// ── 标准模组文件模板 ──
+const FILE_NAMES = ['开幕','背景','NPC','地点','场景节点','线索','敌对存在','规则','奖励','其他'] as const;
+
 // ── 本地文本提取 ──
 async function extractTextFromFile(file: File): Promise<string> {
   const ext = file.name.split('.').pop()?.toLowerCase() || '';
   if (ext === 'txt') return await file.text();
-
   if (ext === 'docx') {
     if (!(window as any).mammoth) {
       await new Promise<void>((resolve) => {
@@ -38,33 +38,25 @@ async function extractTextFromFile(file: File): Promise<string> {
     }
     const mammoth = (window as any).mammoth;
     if (mammoth?.extractRawText) {
-      try {
-        const arrayBuffer = await file.arrayBuffer();
-        const res = await mammoth.extractRawText({ arrayBuffer });
-        return res.value || '';
-      } catch { return ''; }
+      try { const ab = await file.arrayBuffer(); const r = await mammoth.extractRawText({ arrayBuffer: ab }); return r.value || ''; }
+      catch { return ''; }
     }
   }
   return '';
 }
 
-// ── 按自然段落分块 ──
-function splitIntoBlocks(text: string, maxBlockChars = 6000): string[] {
-  const rawBlocks = text.split(/\n\n+/).filter(b => b.trim().length > 0);
+// ── 按自然段分块 ──
+function splitIntoBlocks(text: string, maxChars = 8000): string[] {
+  const raw = text.split(/\n\n+/).filter(b => b.trim());
   const blocks: string[] = [];
-  let current = '';
-
-  for (const block of rawBlocks) {
-    const trimmed = block.trim();
-    if (!trimmed) continue;
-    if ((current.length > 0) && (current.length + trimmed.length > maxBlockChars)) {
-      blocks.push(current);
-      current = trimmed;
-    } else {
-      current = current ? current + '\n\n' + trimmed : trimmed;
-    }
+  let cur = '';
+  for (const b of raw) {
+    const t = b.trim();
+    if (!t) continue;
+    if (cur && cur.length + t.length > maxChars) { blocks.push(cur); cur = t; }
+    else cur = cur ? cur + '\n\n' + t : t;
   }
-  if (current) blocks.push(current);
+  if (cur) blocks.push(cur);
   return blocks;
 }
 
@@ -75,10 +67,7 @@ async function callAI(apiKey: string, prompt: string, maxTokens = 1000): Promise
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({ model: MODEL, messages: [{ role: 'user', content: prompt }], temperature: 0.2, max_tokens: maxTokens }),
   });
-  if (!resp.ok) {
-    const txt = await resp.text();
-    throw new Error(`API错误 ${resp.status}: ${txt}`);
-  }
+  if (!resp.ok) { const t = await resp.text(); throw new Error(`API ${resp.status}: ${t}`); }
   const d = await resp.json();
   return d.choices?.[0]?.message?.content ?? '';
 }
@@ -86,133 +75,120 @@ async function callAI(apiKey: string, prompt: string, maxTokens = 1000): Promise
 // ── 主处理 ──
 export async function processModuleFile(file: File, apiKey: string): Promise<ParsedModule> {
   const extracted = await extractTextFromFile(file);
-
   if (!extracted) {
-    return {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      title: file.name,
-      summary: '',
-      categories: [{ name: 'raw', content: '' }],
-      rawText: '',
-      createdAt: Date.now(),
-    } as ParsedModule;
+    return { id: `${Date.now()}-${Math.random().toString(36).slice(2,8)}`, title: file.name, summary: '', files: [], rawText: '', createdAt: Date.now() };
   }
 
+  // 无 API Key → 全放入"其他"
   if (!apiKey) {
     return {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      title: file.name,
-      summary: extracted.slice(0, 300),
-      categories: [{ name: '全文', content: extracted }],
-      rawText: extracted,
-      createdAt: Date.now(),
-    } as ParsedModule;
+      id: `${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+      title: file.name, summary: extracted.slice(0, 300),
+      files: [{ name: '其他', content: extracted }],
+      rawText: extracted, createdAt: Date.now(),
+    };
   }
 
-  // 第一步：AI 提取标题和摘要
-  const headText = extracted.slice(0, 4000);
-  const metaPrompt = `你是一个COC跑团模组解析器。根据以下模组文本开头，提取：
-1. 模组标题
-2. 一句话摘要（50字以内）
-
-只返回JSON：{"title":"...","summary":"..."}
-
-模组文本：
-${headText}`;
-
-  let title = file.name;
-  let summary = '';
+  // ── 第一步：AI 提取标题和摘要 ──
+  let title = file.name, summary = '';
   try {
-    const metaRaw = await callAI(apiKey, metaPrompt, 300);
-    const jsonStart = metaRaw.indexOf('{');
-    const meta = JSON.parse(jsonStart >= 0 ? metaRaw.slice(jsonStart) : metaRaw);
-    title = meta.title || file.name;
-    summary = meta.summary || '';
-  } catch { /* 回退 */ }
+    const mr = await callAI(apiKey,
+      `从以下模组开头提取标题和摘要。只返回JSON：{"title":"...","summary":"..."}\n\n${extracted.slice(0, 4000)}`, 300);
+    const j = JSON.parse(mr.slice(mr.indexOf('{')));
+    title = j.title || file.name; summary = j.summary || '';
+  } catch {}
 
-  // 第二步：分块，AI 只打分类标签（不压缩内容）
-  const blocks = splitIntoBlocks(extracted, 6000);
-  const classified: { name: string; content: string }[] = [];
+  // ── 第二步：分块，AI 只打文件名标签 ──
+  const blocks = splitIntoBlocks(extracted, 8000);
+  const fileMap = new Map<string, string>();
 
   for (const block of blocks) {
-    if (block.length < 50) {
-      classified.push({ name: '其他', content: block });
-      continue;
-    }
+    if (block.length < 30) continue;
 
-    const classPrompt = `你是COC模组分类器。判断下面文本属于哪个分类，只返回分类名：
-可选：背景、场景节点、线索、NPC、地点、敌对存在、规则、奖励、初始场景、其他
+    const prompt = `你是COC模组分类器。判断下面文本属于哪个文件，只返回文件名（单选）：
+可选：开幕、背景、NPC、地点、场景节点、线索、敌对存在、规则、奖励、其他
+
+判断标准：
+- 开幕：开场的叙述性文字，通常是"你站在..."、"故事开始..."等引入
+- 背景：时代、地点、委托说明、事件起因
+- NPC：人物描述、性格、动机
+- 地点：具体场所的描述（外观、内部、特征）
+- 场景节点：按顺序推进的事件步骤
+- 线索：调查可发现的物品、日志、证词
+- 敌对存在：怪物、敌人数据（HP/STR等）
+- 规则：检定要求、特殊机制
+- 奖励：结局奖励、SAN回复
+- 其他：不属于以上分类
 
 文本：
-${block.slice(0, 3000)}
+${block.slice(0, 4000)}
 
-分类：`;
+文件名：`;
 
     try {
-      const category = (await callAI(apiKey, classPrompt, 50)).trim();
-      const cleanCat = ['背景','场景节点','线索','NPC','地点','敌对存在','规则','奖励','初始场景','其他']
-        .find(c => category.includes(c)) || '其他';
-      classified.push({ name: cleanCat, content: block });
+      const cat = (await callAI(apiKey, prompt, 50)).trim();
+      const file = FILE_NAMES.find(f => cat.includes(f)) || '其他';
+      fileMap.set(file, (fileMap.get(file) || '') + '\n\n' + block);
     } catch {
-      classified.push({ name: '其他', content: block });
+      fileMap.set('其他', (fileMap.get('其他') || '') + '\n\n' + block);
     }
   }
 
-  // 第三步：合并同分类
-  const categoryMap = new Map<string, string>();
-  for (const item of classified) {
-    const existing = categoryMap.get(item.name) || '';
-    categoryMap.set(item.name, existing ? existing + '\n\n' + item.content : item.content);
-  }
-  const categories: ModuleCategory[] = Array.from(categoryMap.entries()).map(([name, content]) => ({
-    name, content: content.trim(),
-  }));
-
-  // 第四步：提取 NPC 和地点
-  let npcs: { name: string; description: string }[] = [];
-  let locations: { name: string; description: string }[] = [];
-  try {
-    const npcPrompt = `从以下模组文本提取NPC和地点。只返回JSON：
-{"npcs":[{"name":"..","description":".."}],"locations":[{"name":"..","description":".."}]}
-
-模组文本：
-${extracted.slice(0, 8000)}`;
-    const npcRaw = await callAI(apiKey, npcPrompt, 800);
-    const jsonStart = npcRaw.indexOf('{');
-    const parsed = JSON.parse(jsonStart >= 0 ? npcRaw.slice(jsonStart) : npcRaw);
-    npcs = parsed.npcs || [];
-    locations = parsed.locations || [];
-  } catch { /* 可选 */ }
+  // 确保所有文件都存在
+  const files: ModuleFile[] = FILE_NAMES.map(name => ({
+    name, content: (fileMap.get(name) || '').trim(),
+  })).filter(f => f.content.length > 0);
 
   return {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    title,
-    summary,
-    categories,
-    npcs,
-    locations,
-    rules: [],
-    rawText: extracted,
-    createdAt: Date.now(),
+    id: `${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+    title, summary, files, rawText: extracted, createdAt: Date.now(),
   };
 }
 
+// ── 获取指定文件的内容（用于游戏运行时按需注入）──
+export function getModuleFile(module: ParsedModule, fileName: string): string {
+  return module.files.find(f => f.name === fileName)?.content || '';
+}
+
+// ── 获取"始终需要"的文件合并文本（开幕+NPC+地点+背景+规则）──
+export function getBaseContext(module: ParsedModule): string {
+  const always = ['开幕','背景','NPC','地点','规则'];
+  const parts: string[] = [];
+  for (const fn of always) {
+    const c = getModuleFile(module, fn);
+    if (c) parts.push(`== ${fn} ==\n${c}`);
+  }
+  return parts.join('\n\n');
+}
+
+// ── 根据玩家输入检测需要注入的额外文件 ──
+export function detectSceneInjection(module: ParsedModule, playerInput: string): string | null {
+  const keywords: Record<string, string[]> = {
+    '场景节点': ['去','调查','进入','探索','前往','走到','推开','爬上','下楼','上楼','地下室','阁楼','仓库','客厅','厨房','保安室','码头','礁石','卧室','浴室','储藏室','餐厅','图书馆','教堂','精神病院','报社','警局','隧道','墓地'],
+    '线索': ['搜索','翻','查看','检查','找','线索','日志','日记','笔记','报纸','纸条','信','书','记录','照片','符号','刻痕','鳞片','血迹','脚印','拖拽'],
+    '敌对存在': ['战斗','攻击','怪物','敌人','出现','掏出枪','瞄准','劈','砍','射击'],
+  };
+
+  for (const [file, kws] of Object.entries(keywords)) {
+    if (kws.some(k => playerInput.includes(k))) {
+      const content = getModuleFile(module, file);
+      if (content) return `\n\n[系统注入：${file}]\n${content}`;
+    }
+  }
+  return null;
+}
+
 // ── 存储 ──
-export function saveParsedModule(module: ParsedModule): void {
-  const list = getParsedModules();
-  list.push(module);
+export function saveParsedModule(m: ParsedModule): void {
+  const list = getParsedModules(); list.push(m);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
 }
-
 export function getParsedModules(): ParsedModule[] {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') as ParsedModule[]; }
-  catch { return []; }
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') as ParsedModule[]; } catch { return []; }
 }
-
 export function getParsedModuleById(id: string): ParsedModule | null {
   return getParsedModules().find(m => m.id === id) ?? null;
 }
-
 export function deleteParsedModule(id: string): void {
   const list = getParsedModules().filter(m => m.id !== id);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
@@ -220,23 +196,8 @@ export function deleteParsedModule(id: string): void {
 
 // ── 格式化为 AI Prompt ──
 export function flattenModuleForPrompt(module: ParsedModule): string {
-  const parts: string[] = [];
-  parts.push(`模组标题：${module.title}`);
+  const parts = [`模组：${module.title}`];
   if (module.summary) parts.push(`摘要：${module.summary}`);
-  if (module.categories?.length) {
-    for (const cat of module.categories) {
-      parts.push(`== ${cat.name} ==\n${cat.content}`);
-    }
-  } else if (module.rawText) {
-    parts.push(module.rawText);
-  }
-  if (module.npcs?.length) {
-    parts.push('NPC：');
-    for (const n of module.npcs) parts.push(`${n.name}：${n.description}`);
-  }
-  if (module.locations?.length) {
-    parts.push('地点：');
-    for (const l of module.locations) parts.push(`${l.name}：${l.description}`);
-  }
+  for (const f of module.files) parts.push(`== ${f.name} ==\n${f.content}`);
   return parts.join('\n\n');
 }
