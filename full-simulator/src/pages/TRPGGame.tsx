@@ -17,7 +17,7 @@ import { DEFAULT_SCENARIO, SCENARIOS } from '@/data/knowledge';
 import DicePanel from '@/components/game/DicePanel';
 import { getCharactersList, getCurrentCharacter, saveCharacter, exportCharactersToFile, importCharactersFromFile } from '@/utils/storage';
 import type { Character } from '@/types/game';
-import { getParsedModules, deleteParsedModule, getBaseContext, detectSceneInjection, getModuleFile } from '@/services/moduleProcessor';
+import { getParsedModules, deleteParsedModule, getBaseContext, getModuleFile, matchAndUnlock, getUnlockedContent, resetGates } from '@/services/moduleProcessor';
 
 // ── 消息格式解析 ──
 interface ParsedMessage {
@@ -173,14 +173,21 @@ export default function TRPGGame() {
     setMessages(p => [...p, { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), role, content, timestamp: Date.now() }]);
   }, []);
 
-  // ⚡ 计算实际发送给 AI 的模组内容（导入模组按需注入，预设模组完整发送）
+  // ⚡ 计算实际发送给 AI 的模组内容（始终可见 + 已解锁门控）
   const getEffectiveScenario = useCallback((playerInput?: string) => {
     const imported = parsedModules.find(m => m.id === selectedScenarioId);
     if (!imported) return scenario; // 预设模组：完整发送
     const base = getBaseContext(imported);
-    if (!playerInput) return base;  // 开场：只给基础
-    const injected = detectSceneInjection(imported, playerInput);
-    return injected ? base + injected : base;
+    // 尝试匹配并解锁新内容
+    if (playerInput) {
+      const newlyUnlocked = matchAndUnlock(imported, playerInput);
+      if (newlyUnlocked) {
+        // 刷新 parsedModules 以反映解锁状态
+        setParsedModules([...parsedModules]);
+      }
+    }
+    const unlocked = getUnlockedContent(imported);
+    return unlocked ? base + '\n\n## 已解锁信息\n' + unlocked : base;
   }, [parsedModules, selectedScenarioId, scenario]);
 
   const startGame = useCallback(async () => {
@@ -205,24 +212,30 @@ export default function TRPGGame() {
     const charIntro = `当前角色：${selectedChar.name}（${selectedChar.occupation}）\nHP ${selectedChar.derived.HP}/${selectedChar.derived.maxHP} | SAN ${selectedChar.derived.SAN}/${selectedChar.derived.maxSAN} | MP ${selectedChar.derived.MP}/${selectedChar.derived.maxMP} | MOV ${selectedChar.derived.MOV} | DB ${selectedChar.derived.DB}\n武器：${weapons}\n技能：${selectedChar.skills.filter(s => s.currentValue >= 20).map(s => `${s.name}(${s.currentValue})`).join(', ')}`;
     addMsg('system', `🕯 载入角色：${selectedChar.name} · ${selectedChar.occupation}`);
 
-    // ⚡ 开场交给 AI 润色——只给基础文件（开幕+NPC+地点+背景），不给线索/场景/敌对
+    // ⚡ 重置导入模组的门控状态
+    const importedMod = parsedModules.find(m => m.id === selectedScenarioId);
+    if (importedMod) {
+      resetGates(importedMod);
+      setParsedModules([...parsedModules]);
+    }
+
+    // ⚡ 开场交给 AI 润色——只给基础文件，不给门控内容
     setLoading(true);
     try {
-      // 导入模组：只用基础上下文；预设模组：用完整 scenario
-      const importedMod = parsedModules.find(m => m.id === selectedScenarioId);
       const kpContext = importedMod ? getBaseContext(importedMod) : scenario;
 
-      const openingPrompt = `你是COC 7th跑团的守秘人(KP)。游戏现在开始。你只能使用下面提供的信息。
+      const openingPrompt = `你是COC 7th跑团的守秘人(KP)。游戏现在开始。
 
-## ⚠ 重要：你只知道以下内容
+## ⚠ 重要：你目前只知道以下内容
 ${kpContext}
+
+## 关于你不知道的信息
+你**不知道**线索细节、NPC秘密、怪物数据、后续场景节点。这些信息会在调查员触发时由系统逐步注入给你。如果调查员询问你不知道的事情，用自然的方式回应（如"你目前没有这方面的信息"），**不要编造**。
 
 ## 玩家角色
 ${charIntro}
 
-请用生动的文学语言，以守秘人的身份描述开场场景。你只能描述"开幕"文件中提供的内容——不要编造你不知道的信息。给出清晰的开场，引导玩家做出第一个行动选择。
-
-200-400字。不要使用[CHECK]或[SAN_CHECK]标记。`;
+请用生动的文学语言描述开场场景。200-400字。不要使用[CHECK]或[SAN_CHECK]标记。`;
 
       const resp = await fetch('https://api.deepseek.com/v1/chat/completions', {
         method: 'POST',
