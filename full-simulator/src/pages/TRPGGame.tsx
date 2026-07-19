@@ -391,7 +391,17 @@ export default function TRPGGame() {
   // ═══ 设置阶段渲染 ═══
   if (phase === 'setup') {
     const currentScenario = SCENARIOS.find(s => s.id === selectedScenarioId);
-    const playerIntro = (currentScenario as any)?.playerIntro || scenario.split('### 初始场景')[1]?.trim() || '';
+    // 优先从预设模组取 playerIntro；导入模组用 rawText 的第一段作为引入
+    let playerIntro = (currentScenario as any)?.playerIntro || '';
+    if (!playerIntro) {
+      const imported = parsedModules.find(m => m.id === selectedScenarioId);
+      if (imported) {
+        playerIntro = imported.summary || (imported.rawText || '').slice(0, 600);
+      } else {
+        playerIntro = scenario.split('### 初始场景')[1]?.trim() || '';
+      }
+    }
+    const scenarioName = currentScenario?.name || parsedModules.find(m => m.id === selectedScenarioId)?.title || '选择模组';
 
     return (
       <div className="min-h-screen bg-[#0c0c10] text-[#c8c8d0] p-4">
@@ -498,11 +508,25 @@ export default function TRPGGame() {
                       </Button>
                     ))}
                     {parsedModules.map(m => (
-                      <Button key={m.id} size="sm" variant="ghost"
-                        className={`text-[10px] ${selectedScenarioId === m.id ? 'border-[#c8a84e] text-[#c8a84e]' : 'text-[#9fa19f]'}`}
-                        onClick={() => { setSelectedScenarioId(m.id); setScenario(m.rawText || m.summary || ''); }}>
-                        {m.title}
-                      </Button>
+                      <div key={m.id} className="flex items-center gap-0">
+                        <Button size="sm" variant="ghost"
+                          className={`text-[10px] rounded-r-none ${selectedScenarioId === m.id ? 'border-[#c8a84e] text-[#c8a84e]' : 'text-[#9fa19f]'}`}
+                          onClick={() => { setSelectedScenarioId(m.id); setScenario(m.rawText || m.summary || ''); }}>
+                          {m.title}
+                        </Button>
+                        <Button size="sm" variant="ghost"
+                          className="text-[10px] text-[#6a6a74] hover:text-red-500 rounded-l-none px-1"
+                          onClick={() => {
+                            deleteParsedModule(m.id);
+                            setParsedModules(getParsedModules());
+                            if (selectedScenarioId === m.id) {
+                              setSelectedScenarioId('dock');
+                              setScenario(DEFAULT_SCENARIO);
+                            }
+                          }}>
+                          ✕
+                        </Button>
+                      </div>
                     ))}
                   </div>
                   <Textarea value={scenario} onChange={e => setScenario(e.target.value)}
@@ -526,6 +550,8 @@ export default function TRPGGame() {
                           localStorage.setItem(listKey, JSON.stringify(existing));
                           alert('模组已解析：' + parsed.title);
                           setScenario(prev => parsed.rawText || prev);
+                          setSelectedScenarioId(parsed.id);
+                          setParsedModules(getParsedModules());
                         } catch (err: any) { alert('导入失败：' + (err.message || String(err))); }
                         e.target.value = '';
                       }} />
@@ -539,7 +565,7 @@ export default function TRPGGame() {
               <Card className="bg-[#111116] border-[#c8a84e]/20">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-[#c8a84e] font-serif text-base flex items-center gap-2">
-                    <BookOpen className="w-4 h-4" />{currentScenario?.name || '选择模组'}
+                    <BookOpen className="w-4 h-4" />{scenarioName}
                   </CardTitle>
                   <div className="flex gap-3 text-[10px] text-[#6a6a74] mt-1">
                     <span>👥 建议 1-4 人</span>
