@@ -192,12 +192,42 @@ export default function TRPGGame() {
 
     // 注入角色信息到开场
     const weapons = selectedChar.weapons?.map(w => w.name).join('、') || '徒手';
-    const cr = (selectedChar as any).creditRating ?? '—';
-    const charIntro = `\n\n[系统] 当前角色：${selectedChar.name}（${selectedChar.occupation}）\nHP ${selectedChar.derived.HP}/${selectedChar.derived.maxHP} | SAN ${selectedChar.derived.SAN}/${selectedChar.derived.maxSAN} | MP ${selectedChar.derived.MP}/${selectedChar.derived.maxMP} | MOV ${selectedChar.derived.MOV} | DB ${selectedChar.derived.DB}\n武器：${weapons}`;
-    addMsg('system', `🕯 载入角色：${selectedChar.name} · ${selectedChar.occupation}` + charIntro);
+    const charIntro = `当前角色：${selectedChar.name}（${selectedChar.occupation}）\nHP ${selectedChar.derived.HP}/${selectedChar.derived.maxHP} | SAN ${selectedChar.derived.SAN}/${selectedChar.derived.maxSAN} | MP ${selectedChar.derived.MP}/${selectedChar.derived.maxMP} | MOV ${selectedChar.derived.MOV} | DB ${selectedChar.derived.DB}\n武器：${weapons}\n技能：${selectedChar.skills.filter(s => s.currentValue >= 20).map(s => `${s.name}(${s.currentValue})`).join(', ')}`;
+    addMsg('system', `🕯 载入角色：${selectedChar.name} · ${selectedChar.occupation}`);
 
-    const sceneText = scenario.split('### 初始场景')[1]?.trim() || scenario.slice(0, 500);
-    addMsg('kp', '🕯 *故事就这样开始了……*\n\n' + sceneText);
+    // ⚡ 开场交给 AI 润色——把模组内容和角色信息发给它
+    setLoading(true);
+    try {
+      const openingPrompt = `你是COC 7th跑团的守秘人(KP)。游戏现在开始。
+
+## 玩家角色
+${charIntro}
+
+## 模组内容（严格遵循）
+${scenario}
+
+请用生动的文学语言，以守秘人的身份描述开场的第一个场景。描述环境、氛围、NPC（如果有）、以及调查员所处的状态。给出一个清晰的开场，结尾引导玩家做出第一个行动选择。
+
+回复格式：
+#用一段动作描述开场场景
+'对话内容（如有NPC）'
+(气氛描写)
+
+不要使用[CHECK]或[SAN_CHECK]标记——开场只需叙事。200-400字。`;
+
+      const resp = await fetch('https://api.deepseek.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKeyInput.trim()}` },
+        body: JSON.stringify({ model: 'deepseek-chat', messages: [{ role: 'user', content: openingPrompt }], temperature: 0.7, max_tokens: 1500 }),
+      });
+      const data = await resp.json();
+      const opening = data.choices?.[0]?.message?.content || '🕯 *故事就这样开始了……*\n\n' + (scenario.split('### 初始场景')[1]?.trim() || '');
+      addMsg('kp', opening);
+    } catch {
+      const sceneText = scenario.split('### 初始场景')[1]?.trim() || scenario.slice(0, 500);
+      addMsg('kp', '🕯 *故事就这样开始了……*\n\n' + sceneText);
+    }
+    setLoading(false);
   }, [apiKeyInput, scenario, selectedChar, addMsg]);
 
   const handleSend = useCallback(async () => {
