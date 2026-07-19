@@ -197,7 +197,7 @@ export default function TRPGGame() {
     addMsg('system', `🕯 载入角色：${selectedChar.name} · ${selectedChar.occupation}` + charIntro);
 
     const sceneText = scenario.split('### 初始场景')[1]?.trim() || scenario.slice(0, 500);
-    addMsg('kp', '🕯 *烛光摇曳，你翻开教团的委派文书……*\n\n' + sceneText);
+    addMsg('kp', '🕯 *故事就这样开始了……*\n\n' + sceneText);
   }, [apiKeyInput, scenario, selectedChar, addMsg]);
 
   const handleSend = useCallback(async () => {
@@ -390,175 +390,183 @@ export default function TRPGGame() {
 
   // ═══ 设置阶段渲染 ═══
   if (phase === 'setup') {
-    return (
-      <div className="min-h-screen bg-[#0c0c10] text-[#c8c8d0] flex items-center justify-center p-4">
-        <Card className="bg-[#111116] border-[#c8a84e]/20 max-w-2xl w-full">
-          <CardHeader>
-            <CardTitle className="text-[#c8a84e] font-serif text-center tracking-widest">
-              💀 COC 7th · AI守秘人跑团
-            </CardTitle>
-            <p className="text-center text-xs text-[#6a6a74] mt-1">DeepSeek API 驱动 · COC 7th 规则 · 掷骰检定</p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* API Key */}
-            <div>
-              <label className="text-sm text-[#c8a84e] font-serif mb-1 block">
-                <Key className="w-3 h-3 inline mr-1" /> DeepSeek API Key
-              </label>
-              <Input
-                type="password"
-                placeholder="sk-..."
-                id="ds-api-key"
-                value={apiKeyInput}
-                onChange={e => setApiKeyInput(e.target.value)}
-                className="bg-[#0c0c10] border-[#c8a84e]/20 text-[#c8c8d0] font-mono text-sm"
-              />
-            </div>
+    const currentScenario = SCENARIOS.find(s => s.id === selectedScenarioId);
+    const playerIntro = (currentScenario as any)?.playerIntro || scenario.split('### 初始场景')[1]?.trim() || '';
 
-            {/* 角色选择 */}
-            <div>
-              <label className="text-sm text-[#c8a84e] font-serif mb-1 block">
-                <Users className="w-3 h-3 inline mr-1" /> 选择调查员
-              </label>
-              {savedCharacters.length > 0 ? (
-                <div className="space-y-2">
-                  <div className="relative">
-                    <select
-                      value={selectedCharId ?? savedCharacters[0]?.id ?? ''}
-                      onChange={e => setSelectedCharId(e.target.value)}
-                      className="w-full bg-[#0c0c10] border border-[#c8a84e]/20 text-[#c8c8d0] rounded p-2 text-sm appearance-none cursor-pointer"
-                    >
-                      {savedCharacters.map(c => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} · {c.occupation} | HP{c.derived.HP} SAN{c.derived.SAN} STR{c.attributes.STR}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[#6a6a74] pointer-events-none" />
-                  </div>
-                  {selectedChar && (
-                    <div className="grid grid-cols-4 gap-1 text-[10px] text-[#6a6a74] bg-[#0c0c10] rounded p-2 border border-[#c8a84e]/10">
-                      <span>HP {selectedChar.derived.HP}/{selectedChar.derived.maxHP}</span>
-                      <span>SAN {selectedChar.derived.SAN}</span>
-                      <span>MP {selectedChar.derived.MP}</span>
-                      <span>MOV {selectedChar.derived.MOV}</span>
-                      <span>DB {selectedChar.derived.DB}</span>
-                      <span>BUILD {selectedChar.derived.BUILD}</span>
-                      <span>LUCK {selectedChar.attributes.LUCK}</span>
-                      <span>STR {selectedChar.attributes.STR}</span>
+    return (
+      <div className="min-h-screen bg-[#0c0c10] text-[#c8c8d0] p-4">
+        <div className="max-w-3xl mx-auto space-y-6">
+          {/* 标题 */}
+          <div className="text-center py-4">
+            <h1 className="text-2xl font-bold text-[#c8a84e] font-serif tracking-widest">
+              💀 COC 7th · AI守秘人跑团
+            </h1>
+            <p className="text-xs text-[#6a6a74] mt-1">DeepSeek API 驱动 · 掷骰检定 · 单人/多人调查</p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* ── 左栏：角色 & 设置 ── */}
+            <div className="space-y-4">
+              {/* 调查员 */}
+              <Card className="bg-[#111116] border-[#c8a84e]/15">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-[#c8a84e] font-serif text-sm flex items-center gap-2">
+                    <Users className="w-4 h-4" />调查员
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {savedCharacters.length > 0 ? (
+                    <>
+                      <select
+                        value={selectedCharId ?? savedCharacters[0]?.id ?? ''}
+                        onChange={e => setSelectedCharId(e.target.value)}
+                        className="w-full bg-[#0c0c10] border border-[#c8a84e]/20 text-[#c8c8d0] rounded p-2 text-sm appearance-none cursor-pointer"
+                      >
+                        {savedCharacters.map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} · {c.occupation}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedChar && (
+                        <div className="grid grid-cols-4 gap-1 text-[10px] text-[#6a6a74] bg-[#0c0c10] rounded p-2 border border-[#c8a84e]/10">
+                          <span>HP {selectedChar.derived.HP}/{selectedChar.derived.maxHP}</span>
+                          <span>SAN {selectedChar.derived.SAN}</span>
+                          <span>MP {selectedChar.derived.MP}</span>
+                          <span>MOV {selectedChar.derived.MOV}</span>
+                          <span>DB {selectedChar.derived.DB}</span>
+                          <span>BUILD {selectedChar.derived.BUILD}</span>
+                          <span>LUCK {selectedChar.attributes.LUCK}</span>
+                          <span>STR {selectedChar.attributes.STR}</span>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="bg-[#0c0c10] border border-[#c8a84e]/10 rounded p-3 text-center text-xs text-[#6a6a74]">
+                      还没有角色
                     </div>
                   )}
-                </div>
-              ) : (
-                <div className="bg-[#0c0c10] border border-[#c8a84e]/10 rounded p-3 text-center text-xs text-[#6a6a74]">
-                  还没有角色，请先创建一个调查员
-                </div>
-              )}
-              <Button
-                size="sm"
-                variant="outline"
-                className="mt-2 w-full border-[#c8a84e]/20 text-[#c8a84e] hover:bg-[#c8a84e]/10 text-xs"
-                onClick={goToCreateChar}
-              >
-                <UserPlus className="w-3 h-3 mr-1" /> 创建新角色
-              </Button>
-              {/* 导入导出按钮 */}
-              <div className="flex gap-1 mt-1">
-                {savedCharacters.length > 0 && (
                   <Button size="sm" variant="outline"
-                    className="flex-1 border-[#c8a84e]/20 text-[#6a6a74] hover:text-[#c8a84e] text-xs h-7"
-                    onClick={exportCharactersToFile}>
-                    📤 导出
+                    className="w-full border-[#c8a84e]/20 text-[#c8a84e] hover:bg-[#c8a84e]/10 text-xs"
+                    onClick={goToCreateChar}>
+                    <UserPlus className="w-3 h-3 mr-1" />创建新角色
                   </Button>
-                )}
-                <Button size="sm" variant="outline"
-                  className="flex-1 border-[#c8a84e]/20 text-[#6a6a74] hover:text-[#c8a84e] text-xs h-7"
-                  onClick={() => document.getElementById('import-char-file')?.click()}>
-                  📥 导入
-                </Button>
-                <input id="import-char-file" type="file" accept=".json" className="hidden"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    try {
-                      const chars = await importCharactersFromFile(file);
-                      setSelectedCharId(chars[chars.length - 1]?.id ?? null);
-                      setCharRefreshKey(k => k + 1); // 强制刷新角色列表
-                    } catch (err: any) {
-                      alert('导入失败：' + err.message);
-                    }
-                    e.target.value = ''; // 清空以便重复选择同一文件
-                  }}
-                />
-                <Button size="sm" variant="outline"
-                  className="flex-1 border-[#c8a84e]/20 text-[#6a6a74] hover:text-[#c8a84e] text-xs h-7"
-                  onClick={() => document.getElementById('import-module-file')?.click()}>
-                  📁 导入模组
-                </Button>
-                <input id="import-module-file" type="file" accept=".doc,.docx,.txt" className="hidden"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    // 延迟加载 moduleProcessor，避免初始打包依赖
-                    try {
-                      const mod = await import('@/services/moduleProcessor');
-                      const apiKey = apiKeyInput || '';
-                      const parsed = await mod.processModuleFile(file, apiKey);
-                      // 将解析后的模组保存在 localStorage（按 id 存放）
-                      const listKey = 'coc_parsed_modules';
-                      const existing = JSON.parse(localStorage.getItem(listKey) || '[]');
-                      existing.push(parsed);
-                      localStorage.setItem(listKey, JSON.stringify(existing));
-                      alert('模组已解析并保存：' + parsed.title);
-                      // 将解析内容填入模组编辑框，方便检查
-                      setScenario(prev => parsed.rawText || prev);
-                    } catch (err: any) {
-                      alert('导入模组失败：' + (err.message || String(err)));
-                    }
-                    e.target.value = '';
-                  }}
-                />
-              </div>
+                  <div className="flex gap-1">
+                    {savedCharacters.length > 0 && (
+                      <Button size="sm" variant="outline"
+                        className="flex-1 border-[#c8a84e]/20 text-[#6a6a74] hover:text-[#c8a84e] text-xs h-7"
+                        onClick={exportCharactersToFile}>📤 导出</Button>
+                    )}
+                    <Button size="sm" variant="outline"
+                      className="flex-1 border-[#c8a84e]/20 text-[#6a6a74] hover:text-[#c8a84e] text-xs h-7"
+                      onClick={() => document.getElementById('import-char-file')?.click()}>📥 导入</Button>
+                    <input id="import-char-file" type="file" accept=".json" className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        try {
+                          const chars = await importCharactersFromFile(file);
+                          setSelectedCharId(chars[chars.length - 1]?.id ?? null);
+                          setCharRefreshKey(k => k + 1);
+                        } catch (err: any) { alert('导入失败：' + err.message); }
+                        e.target.value = '';
+                      }} />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* KP 工具箱（折叠） */}
+              <Card className="bg-[#111116] border-[#c8a84e]/10">
+                <CardHeader className="pb-2 cursor-pointer" onClick={() => {
+                  const el = document.getElementById('kp-toolbox');
+                  if (el) el.classList.toggle('hidden');
+                }}>
+                  <CardTitle className="text-[#6a6a74] font-serif text-xs flex items-center gap-2">
+                    <Key className="w-3 h-3" />KP 工具箱（点击展开）
+                  </CardTitle>
+                </CardHeader>
+                <CardContent id="kp-toolbox" className="hidden space-y-2">
+                  <Input type="password" placeholder="sk-..." id="ds-api-key"
+                    value={apiKeyInput} onChange={e => setApiKeyInput(e.target.value)}
+                    className="bg-[#0c0c10] border-[#c8a84e]/20 text-[#c8c8d0] font-mono text-xs" />
+                  <div className="flex gap-2">
+                    {SCENARIOS.map(s => (
+                      <Button key={s.id} size="sm" variant="outline"
+                        className={`text-[10px] ${selectedScenarioId === s.id ? 'border-[#c8a84e] text-[#c8a84e] bg-[#c8a84e]/10' : 'border-[#c8a84e]/20 text-[#6a6a74]'}`}
+                        onClick={() => { setSelectedScenarioId(s.id); setScenario(s.content); }}>
+                        {s.name}
+                      </Button>
+                    ))}
+                    {parsedModules.map(m => (
+                      <Button key={m.id} size="sm" variant="ghost"
+                        className={`text-[10px] ${selectedScenarioId === m.id ? 'border-[#c8a84e] text-[#c8a84e]' : 'text-[#9fa19f]'}`}
+                        onClick={() => { setSelectedScenarioId(m.id); setScenario(m.rawText || m.summary || ''); }}>
+                        {m.title}
+                      </Button>
+                    ))}
+                  </div>
+                  <Textarea value={scenario} onChange={e => setScenario(e.target.value)}
+                    className="bg-[#0c0c10] border-[#c8a84e]/20 text-[#6a6a74] min-h-[100px] font-mono text-[10px]"
+                    placeholder="模组完整文本（仅AI读取）……" />
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="outline"
+                      className="flex-1 border-[#c8a84e]/20 text-[#6a6a74] hover:text-[#c8a84e] text-[10px] h-7"
+                      onClick={() => document.getElementById('import-module-file')?.click()}>📁 导入模组</Button>
+                    <input id="import-module-file" type="file" accept=".doc,.docx,.txt" className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        try {
+                          const mod = await import('@/services/moduleProcessor');
+                          const apiKey = apiKeyInput || '';
+                          const parsed = await mod.processModuleFile(file, apiKey);
+                          const listKey = 'coc_parsed_modules';
+                          const existing = JSON.parse(localStorage.getItem(listKey) || '[]');
+                          existing.push(parsed);
+                          localStorage.setItem(listKey, JSON.stringify(existing));
+                          alert('模组已解析：' + parsed.title);
+                          setScenario(prev => parsed.rawText || prev);
+                        } catch (err: any) { alert('导入失败：' + (err.message || String(err))); }
+                        e.target.value = '';
+                      }} />
+                  </div>
+                </CardContent>
+              </Card>
             </div>
 
-            {/* 模组选择 */}
-            <div>
-              <label className="text-sm text-[#c8a84e] font-serif mb-1 block">
-                <BookOpen className="w-3 h-3 inline mr-1" /> 选择模组
-              </label>
-              <div className="flex gap-2 mb-2">
-                {SCENARIOS.map(s => (
-                  <Button key={s.id} size="sm" variant="outline"
-                    className={`text-xs ${selectedScenarioId === s.id ? 'border-[#c8a84e] text-[#c8a84e] bg-[#c8a84e]/10' : 'border-[#c8a84e]/20 text-[#6a6a74]'}`}
-                    onClick={() => { setSelectedScenarioId(s.id); setScenario(s.content); }}>
-                    {s.name}
-                  </Button>
-                ))}
-                {parsedModules.map(m => (
-                  <Button key={m.id} size="sm" variant="ghost"
-                    className={`text-xs ${selectedScenarioId === m.id ? 'border-[#c8a84e] text-[#c8a84e]' : 'text-[#9fa19f]'}`}
-                    onClick={() => { setSelectedScenarioId(m.id); setScenario(m.rawText || m.summary || ''); }}>
-                    {m.title}
-                  </Button>
-                ))}
-              </div>
-              <Textarea
-                value={scenario}
-                onChange={e => setScenario(e.target.value)}
-                className="bg-[#0c0c10] border-[#c8a84e]/20 text-[#c8c8d0] min-h-[200px] font-mono text-xs"
-                placeholder="在此粘贴或修改模组设定……"
-              />
-            </div>
+            {/* ── 右栏：玩家可见的引入文本 ── */}
+            <div className="lg:col-span-2 space-y-4">
+              <Card className="bg-[#111116] border-[#c8a84e]/20">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-[#c8a84e] font-serif text-base flex items-center gap-2">
+                    <BookOpen className="w-4 h-4" />{currentScenario?.name || '选择模组'}
+                  </CardTitle>
+                  <div className="flex gap-3 text-[10px] text-[#6a6a74] mt-1">
+                    <span>👥 建议 1-4 人</span>
+                    <span>⏱ 1-2 次跑团</span>
+                    <span>📖 调查/清剿</span>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="bg-[#0c0c10] border border-[#c8a84e]/10 rounded p-5 text-sm text-[#b0b0b8] leading-relaxed whitespace-pre-line font-serif">
+                    {playerIntro || '请先在 KP 工具箱中选择一个模组。'}
+                  </div>
+                  <div className="text-[10px] text-[#6a6a74] mt-3 text-center border-t border-[#c8a84e]/10 pt-3">
+                    ⚠ 以上为玩家可读内容。详细的线索、怪物数据和场景节点已自动隐藏，仅 AI 守秘人在游戏中访问。
+                  </div>
+                </CardContent>
+              </Card>
 
-            <Button
-              className="w-full bg-[#c8a84e]/15 hover:bg-[#c8a84e]/25 text-[#c8a84e] border border-[#c8a84e]/30 font-serif tracking-widest"
-              disabled={!apiKeyInput.trim() || !selectedChar}
-              onClick={startGame}
-            >
-              <Play className="w-4 h-4 mr-2" /> 开始跑团
-            </Button>
-          </CardContent>
-        </Card>
+              <Button
+                className="w-full bg-[#c8a84e]/15 hover:bg-[#c8a84e]/25 text-[#c8a84e] border border-[#c8a84e]/30 font-serif tracking-widest py-5 text-base"
+                disabled={!apiKeyInput.trim() || !selectedChar}
+                onClick={startGame}
+              >
+                <Play className="w-4 h-4 mr-2" />开始跑团
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
