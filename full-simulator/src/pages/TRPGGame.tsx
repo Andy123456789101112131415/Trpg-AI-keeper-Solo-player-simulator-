@@ -395,7 +395,7 @@ export default function TRPGGame() {
         <Card className="bg-[#111116] border-[#c8a84e]/20 max-w-2xl w-full">
           <CardHeader>
             <CardTitle className="text-[#c8a84e] font-serif text-center tracking-widest">
-              💀 千面之门 · AI守秘人跑团
+              💀 COC 7th · AI守秘人跑团
             </CardTitle>
             <p className="text-center text-xs text-[#6a6a74] mt-1">DeepSeek API 驱动 · COC 7th 规则 · 掷骰检定</p>
           </CardHeader>
@@ -570,7 +570,7 @@ export default function TRPGGame() {
       <div className="border-b border-[#c8a84e]/15 bg-[#111116] px-4 py-3 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <span className="text-xl">💀</span>
-          <h1 className="text-sm font-bold text-[#c8a84e] tracking-widest font-serif">千面之门 · 跑团中</h1>
+          <h1 className="text-sm font-bold text-[#c8a84e] tracking-widest font-serif">COC 7th · 跑团中</h1>
           {selectedChar && (
             <Badge variant="outline" className={`text-xs ${gameSAN <= 20 ? 'border-[#ff8844]/40 text-[#ff8844]' : 'border-[#c8a84e]/30 text-[#c8a84e]'}`}>
               {selectedChar.name} · HP{selectedChar.derived.HP} SAN{gameSAN}
