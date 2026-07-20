@@ -137,7 +137,7 @@ interface Message {
 
 export default function TRPGGame() {
   const [phase, setPhase] = useState<'setup' | 'playing'>('setup');
-  const [apiKeyInput, setApiKeyInput] = useState('sk-fb0c54f1c53b41918a33879ed2129826');
+  const [apiKeyInput, setApiKeyInput] = useState(() => localStorage.getItem('coc_api_key') || '');
   const [scenario, setScenario] = useState(DEFAULT_SCENARIO);
   const [parsedModules, setParsedModules] = useState(() => getParsedModules());
   useEffect(() => { setParsedModules(getParsedModules()); }, []);
@@ -197,6 +197,7 @@ export default function TRPGGame() {
       return;
     }
     setApiKey(apiKeyInput.trim());
+    localStorage.setItem('coc_api_key', apiKeyInput.trim());
     setPhase('playing');
     setMessages([]);
     setMemories([]);

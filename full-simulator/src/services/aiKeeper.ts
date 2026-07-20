@@ -12,7 +12,7 @@ const MODEL = 'deepseek-chat';
 const SUMMARIZE_EVERY = 25; // 每25条消息总结一次
 const KEEP_RECENT = 15;      // 保留最近15条
 
-let apiKey = 'sk-fb0c54f1c53b41918a33879ed2129826';
+let apiKey = '';
 
 export function setApiKey(key: string) { apiKey = key; }
 export function getApiKey() { return apiKey; }
