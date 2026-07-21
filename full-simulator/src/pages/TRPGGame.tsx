@@ -220,19 +220,40 @@ export default function TRPGGame() {
       setParsedModules([...parsedModules]);
     }
 
-    // ⚡ 开场：直接展示原文，不让 AI 润色（避免编造）
+    // ⚡ 开场交给 AI 自然叙事（严格基于模组内容，不编造）
     const kpContext = importedMod ? getBaseContext(importedMod) : scenario;
-    const sceneText = importedMod
-      ? kpContext  // 直接展示解析后的"始终可见"原文
-      : (scenario.split('### 初始场景')[1]?.trim() || scenario.slice(0, 500));
+    setLoading(true);
+    try {
+      const openingPrompt = `你是COC跑团守秘人。下面是你知道的模组内容。请用自然的语言、像真人GM一样叙述开场场景。严格只能使用下面提供的信息，不能编造。如果模组中明确写了"检定"二字，你必须输出[CHECK:技能名]。200-400字。
 
-    addMsg('kp', sceneText);
-    // 提示玩家 AI 已就绪
-    if (importedMod) {
-      addMsg('system', '📋 AI守秘人已就绪。请根据上面提供的信息，输入你的行动或询问。');
+## 模组内容
+${kpContext}
+
+## 玩家角色
+${charIntro}
+
+请开始叙述。`;
+
+      const resp = await fetch('https://api.deepseek.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKeyInput.trim()}` },
+        body: JSON.stringify({ model: 'deepseek-chat', messages: [{ role: 'user', content: openingPrompt }], temperature: 0.6, max_tokens: 1500 }),
+      });
+      const data = await resp.json();
+      const opening = data.choices?.[0]?.message?.content || kpContext;
+      addMsg('kp', opening);
+
+      // 检测开场是否包含检定请求
+      const checkMatch = opening.match(/\[CHECK:([^\]]+)\]/);
+      if (checkMatch) {
+        setSuggestedSkill(checkMatch[1].trim());
+        setShowDicePanel(true);
+      }
+    } catch {
+      addMsg('kp', kpContext);
     }
     setLoading(false);
-  }, [apiKeyInput, scenario, selectedChar, addMsg]);
+  }, [apiKeyInput, scenario, selectedChar, addMsg, parsedModules, selectedScenarioId]);
 
   const handleSend = useCallback(async () => {
     if (!input.trim() || loading) return;
