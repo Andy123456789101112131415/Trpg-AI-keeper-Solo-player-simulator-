@@ -27,9 +27,35 @@ export interface DerivedAttributes {
 // 技能
 export interface Skill {
   name: string;
-  baseValue: number; // 基础值
-  currentValue: number; // 当前值
+  baseValue: number;    // 基础值
+  currentValue: number; // 当前值（含分配）
+  occupationPoints: number;  // 职业技能点投入
+  interestPoints: number;    // 兴趣技能点投入
   category: 'combat' | 'investigation' | 'social' | 'other';
+}
+
+// 武器
+export interface Weapon {
+  id: string;
+  name: string;
+  skillUsed: string;  // 关联技能名（如"格斗"、"射击"、"投掷"）
+  damage: string;      // 伤害公式
+  range: string;        // 射程/范围
+  attacks: number;      // 每轮攻击次数
+  ammo?: number;        // 弹药量（如有）
+  malfunction?: number; // 故障值（如有）
+  notes: string;        // 特殊说明
+}
+
+// COC7版职业定义
+export interface Occupation {
+  id: string;
+  name: string;
+  description: string;
+  skillPoints: string;  // 技能点公式描述
+  creditRange: [number, number]; // 信用评级范围
+  recommendedSkills: string[];  // 推荐技能（选8项）
+  category: 'academic' | 'service' | 'criminal' | 'investigative' | 'combat' | 'other';
 }
 
 // 物品
@@ -45,11 +71,16 @@ export interface Character {
   id: string;
   name: string;
   age: number;
+  sex: string;
   occupation: string;
+  occupationId?: string;
+  creditRating: number;
   background: string;
+  portrait?: string;
   attributes: CharacterAttributes;
   derived: DerivedAttributes;
   skills: Skill[];
+  weapons: Weapon[];
   items: Item[];
   createdAt: number;
 }

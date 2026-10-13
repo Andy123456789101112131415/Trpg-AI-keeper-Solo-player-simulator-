@@ -2,6 +2,9 @@ import Home from './pages/Home';
 import CharacterCreate from './pages/CharacterCreate';
 import ScenarioSelect from './pages/ScenarioSelect';
 import Game from './pages/Game';
+import CombatArena from './pages/CombatArena';
+import CultManagement from './pages/CultManagement';
+import TRPGGame from './pages/TRPGGame';
 import type { ReactNode } from 'react';
 
 interface RouteConfig {
@@ -31,6 +34,21 @@ const routes: RouteConfig[] = [
     name: 'Game',
     path: '/game/:scenarioId',
     element: <Game />
+  },
+  {
+    name: 'Combat Arena',
+    path: '/combat',
+    element: <CombatArena />
+  },
+  {
+    name: 'Cult Management',
+    path: '/cult',
+    element: <CultManagement />
+  },
+  {
+    name: 'TRPG Game',
+    path: '/trpg',
+    element: <TRPGGame />
   }
 ];
 
